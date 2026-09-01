@@ -317,11 +317,11 @@ class HybridWallet:
 ```
 
 **Tasks:**
-- [ ] Implement HybridWallet class
-- [ ] Create signature combination logic
-- [ ] Implement verification mechanism
-- [ ] Add serialization methods
-- [ ] Write comprehensive tests
+- [x] Implement HybridWallet class
+- [x] Create versioned signature combination logic
+- [x] Implement strict dual-signature verification
+- [x] Add public/private key serialization methods
+- [x] Write comprehensive hybrid wallet tests
 
 **File:** `src/hybrid/hybrid_wallet.py`
 
@@ -378,11 +378,21 @@ class BitcoinTransactionBuilder:
 ```
 
 **Tasks:**
-- [ ] Implement transaction builder
-- [ ] Add BIP340/341 compatibility
+- [x] Implement deterministic transaction builder
+- [ ] Add consensus-compatible BIP340/341 signing
 - [ ] Create Taproot integration
-- [ ] Add network broadcasting
-- [ ] Write integration tests
+- [ ] Add configured node/RPC broadcasting
+- [x] Write transaction serialization and hybrid-signing tests
+
+**Implementation Notes:**
+- `src/bitcoin/integration.py` now validates transaction fields, encodes
+  CompactSize values, and serializes legacy, SegWit, and Taproot-shaped
+  transaction envelopes deterministically.
+- Hybrid signatures are verified locally over the double-SHA256 transaction
+  digest. They are not represented as Bitcoin consensus scripts yet.
+- Network broadcasting intentionally raises `NotImplementedError` until an
+  explicit node/RPC integration is configured; the previous TXID-only
+  placeholder has been removed.
 
 **File:** `src/bitcoin/integration.py`
 
@@ -790,4 +800,4 @@ This project is licensed under the Apache License 2.0. See LICENSE file for deta
 
 **Last Updated:** September 1, 2026  
 **Maintained By:** Balancebreaker-13
-**Next Phase:** Phase 3 - Hybrid wallet integration and Bitcoin transaction support
+**Next Phase:** Phase 3 - Consensus-compatible BIP340/341, Taproot, and node/RPC integration

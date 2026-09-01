@@ -1,296 +1,262 @@
-"""
-Bitcoin Transaction Integration for Post-Quantum Wallets
-Handles BIP compatibility and transaction encoding
+"""Deterministic Bitcoin transaction serialization and hybrid signing helpers.
+
+This module handles transaction bytes and signature verification locally. A
+hybrid ML-DSA signature is not currently a Bitcoin consensus script, so the
+module does not pretend to broadcast it to the network. Network submission is
+an explicit integration boundary and fails closed until a node/RPC adapter is
+configured.
 """
 
-from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import dataclass
 import hashlib
-import struct
+from typing import List, Optional, Sequence
 
 
-@dataclass
+MAX_MONEY = 21_000_000 * 100_000_000
+MAX_UINT32 = 0xFFFFFFFF
+MAX_UINT64 = 0xFFFFFFFFFFFFFFFF
+
+
+def encode_compact_size(value: int) -> bytes:
+    """Encode a Bitcoin CompactSize integer."""
+    if not isinstance(value, int) or value < 0:
+        raise ValueError("CompactSize value must be a non-negative integer")
+    if value < 0xFD:
+        return bytes([value])
+    if value <= 0xFFFF:
+        return b"\xfd" + value.to_bytes(2, "little")
+    if value <= MAX_UINT32:
+        return b"\xfe" + value.to_bytes(4, "little")
+    if value <= MAX_UINT64:
+        return b"\xff" + value.to_bytes(8, "little")
+    raise ValueError("CompactSize value is too large")
+
+
+def _bytes(value: bytes, name: str, *, allow_empty: bool = True) -> bytes:
+    if not isinstance(value, (bytes, bytearray, memoryview)):
+        raise TypeError(f"{name} must be bytes-like")
+    value = bytes(value)
+    if not allow_empty and not value:
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _length_prefixed(value: bytes, name: str) -> bytes:
+    value = _bytes(value, name)
+    return encode_compact_size(len(value)) + value
+
+
+@dataclass(frozen=True)
 class TransactionInput:
-    """
-    Bitcoin transaction input
-    
-    Attributes:
-        previous_tx_hash: Hash of previous transaction
-        previous_output_index: Index of output in previous transaction
-        script_pubkey: Locking script
-        sequence: Sequence number (4 bytes)
-    """
+    """A Bitcoin transaction input without its unlocking script."""
+
     previous_tx_hash: bytes
     previous_output_index: int
     script_pubkey: bytes
-    sequence: int = 0xffffffff
-    
+    sequence: int = MAX_UINT32
+    witness: Sequence[bytes] = ()
+
+    def __post_init__(self) -> None:
+        tx_hash = _bytes(self.previous_tx_hash, "previous_tx_hash")
+        script = _bytes(self.script_pubkey, "script_pubkey")
+        if len(tx_hash) != 32:
+            raise ValueError("previous_tx_hash must be exactly 32 bytes")
+        if not 0 <= self.previous_output_index <= MAX_UINT32:
+            raise ValueError("previous_output_index must fit in uint32")
+        if not 0 <= self.sequence <= MAX_UINT32:
+            raise ValueError("sequence must fit in uint32")
+        if len(script) > MAX_UINT64:
+            raise ValueError("script_pubkey is too large")
+        for item in self.witness:
+            if len(_bytes(item, "witness item")) > MAX_UINT64:
+                raise ValueError("witness item is too large")
+
     def serialize(self) -> bytes:
-        """Serialize transaction input to bytes"""
-        result = self.previous_tx_hash
-        result += self.previous_output_index.to_bytes(4, 'little')
-        result += len(self.script_pubkey).to_bytes(1, 'little')
-        result += self.script_pubkey
-        result += self.sequence.to_bytes(4, 'little')
+        """Serialize the non-witness portion of the input."""
+        return (
+            bytes(self.previous_tx_hash)
+            + self.previous_output_index.to_bytes(4, "little")
+            + _length_prefixed(self.script_pubkey, "script_pubkey")
+            + self.sequence.to_bytes(4, "little")
+        )
+
+    def serialize_witness(self) -> bytes:
+        """Serialize this input's SegWit witness stack."""
+        result = encode_compact_size(len(self.witness))
+        for item in self.witness:
+            result += _length_prefixed(item, "witness item")
         return result
 
 
-@dataclass
+@dataclass(frozen=True)
 class TransactionOutput:
-    """
-    Bitcoin transaction output
-    
-    Attributes:
-        value: Amount in satoshis
-        script_pubkey: Unlocking script
-    """
-    value: int  # satoshis
+    """A Bitcoin transaction output."""
+
+    value: int
     script_pubkey: bytes
-    
+
+    def __post_init__(self) -> None:
+        script = _bytes(self.script_pubkey, "script_pubkey")
+        if not 0 <= self.value <= MAX_MONEY:
+            raise ValueError("value must be between 0 and the Bitcoin money limit")
+        if len(script) > MAX_UINT64:
+            raise ValueError("script_pubkey is too large")
+
     def serialize(self) -> bytes:
-        """Serialize transaction output to bytes"""
-        result = self.value.to_bytes(8, 'little')
-        result += len(self.script_pubkey).to_bytes(1, 'little')
-        result += self.script_pubkey
-        return result
+        return (
+            self.value.to_bytes(8, "little")
+            + _length_prefixed(self.script_pubkey, "script_pubkey")
+        )
 
 
 class BitcoinTransactionBuilder:
-    """
-    Build and sign Bitcoin transactions with hybrid keys
-    
-    Supports:
-    - Legacy (P2PKH, P2SH)
-    - SegWit v0 (P2WPKH, P2WSH)
-    - Taproot (P2TR) with PQC compatibility
-    """
-    
-    # Bitcoin script opcodes
+    """Build deterministic legacy or SegWit transaction bytes."""
+
     OP_DUP = 0x76
-    OP_HASH160 = 0xa9
+    OP_HASH160 = 0xA9
     OP_EQUALVERIFY = 0x88
-    OP_CHECKSIG = 0xac
-    
+    OP_CHECKSIG = 0xAC
+    SUPPORTED_TYPES = frozenset(("legacy", "segwit", "taproot"))
+
     def __init__(self, hybrid_wallet=None):
-        """
-        Initialize Bitcoin transaction builder
-        
-        Args:
-            hybrid_wallet: HybridWallet instance for signing
-        """
         self.wallet = hybrid_wallet
-        self.version = 2  # Bitcoin transaction version
+        self.version = 2
         self.locktime = 0
-    
+
+    @staticmethod
+    def _validate_script_hash(value: bytes, expected_size: int, name: str) -> bytes:
+        value = _bytes(value, name)
+        if len(value) != expected_size:
+            raise ValueError(f"{name} must be exactly {expected_size} bytes")
+        return value
+
     def create_p2pkh_script(self, pubkey_hash: bytes) -> bytes:
-        """
-        Create Pay-to-Public-Key-Hash (P2PKH) script
-        
-        Args:
-            pubkey_hash: 20-byte hash160 of public key
-            
-        Returns:
-            Script bytes
-        """
-        # OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
-        script = bytes([self.OP_DUP, self.OP_HASH160])
-        script += bytes([len(pubkey_hash)]) + pubkey_hash
-        script += bytes([self.OP_EQUALVERIFY, self.OP_CHECKSIG])
-        return script
-    
+        pubkey_hash = self._validate_script_hash(pubkey_hash, 20, "pubkey_hash")
+        return bytes(
+            [self.OP_DUP, self.OP_HASH160, len(pubkey_hash)]
+        ) + pubkey_hash + bytes([self.OP_EQUALVERIFY, self.OP_CHECKSIG])
+
     def create_p2wpkh_script(self, pubkey_hash: bytes) -> bytes:
-        """
-        Create Pay-to-Witness-Public-Key-Hash (P2WPKH) script
-        SegWit v0
-        
-        Args:
-            pubkey_hash: 20-byte hash160 of public key
-            
-        Returns:
-            Script bytes
-        """
-        # OP_0 <20-byte-hash>
-        script = bytes([0x00, 0x14]) + pubkey_hash
-        return script
-    
+        pubkey_hash = self._validate_script_hash(pubkey_hash, 20, "pubkey_hash")
+        return b"\x00\x14" + pubkey_hash
+
     def create_p2tr_script(self, taproot_key: bytes) -> bytes:
-        """
-        Create Pay-to-Taproot (P2TR) script
-        SegWit v1 - suitable for quantum-resistant keys
-        
-        Args:
-            taproot_key: 32-byte taproot output key
-            
-        Returns:
-            Script bytes
-        """
-        # OP_1 <32-byte-key>
-        script = bytes([0x51, 0x20]) + taproot_key
-        return script
-    
-    def create_transaction(self, inputs: List[TransactionInput],
-                          outputs: List[TransactionOutput],
-                          tx_type: str = "legacy") -> bytes:
-        """
-        Create unsigned transaction
-        
-        Args:
-            inputs: List of transaction inputs
-            outputs: List of transaction outputs
-            tx_type: Transaction type ('legacy', 'segwit', 'taproot')
-            
-        Returns:
-            Serialized transaction bytes
-        """
+        taproot_key = self._validate_script_hash(taproot_key, 32, "taproot_key")
+        return b"\x51\x20" + taproot_key
+
+    def create_transaction(
+        self,
+        inputs: List[TransactionInput],
+        outputs: List[TransactionOutput],
+        tx_type: str = "legacy",
+    ) -> bytes:
+        """Serialize an unsigned transaction using Bitcoin wire encoding."""
+        if tx_type not in self.SUPPORTED_TYPES:
+            raise ValueError(f"Unsupported transaction type: {tx_type}")
         if not inputs or not outputs:
             raise ValueError("Transaction must have inputs and outputs")
-        
-        result = self.version.to_bytes(4, 'little')
-        
-        # Add witness marker for SegWit (0x00 0x01)
+        if not 0 <= self.version <= MAX_UINT32:
+            raise ValueError("version must fit in uint32")
+        if not 0 <= self.locktime <= MAX_UINT32:
+            raise ValueError("locktime must fit in uint32")
+
+        result = self.version.to_bytes(4, "little")
         if tx_type in ("segwit", "taproot"):
-            result += bytes([0x00, 0x01])
-        
-        # Add inputs
-        result += len(inputs).to_bytes(1, 'little')
-        for tx_input in inputs:
-            result += tx_input.serialize()
-        
-        # Add outputs
-        result += len(outputs).to_bytes(1, 'little')
-        for tx_output in outputs:
-            result += tx_output.serialize()
-        
-        # Add locktime
-        result += self.locktime.to_bytes(4, 'little')
-        
-        return result
-    
+            result += b"\x00\x01"
+        result += encode_compact_size(len(inputs))
+        result += b"".join(tx_input.serialize() for tx_input in inputs)
+        result += encode_compact_size(len(outputs))
+        result += b"".join(tx_output.serialize() for tx_output in outputs)
+        if tx_type in ("segwit", "taproot"):
+            result += b"".join(tx_input.serialize_witness() for tx_input in inputs)
+        return result + self.locktime.to_bytes(4, "little")
+
+    @staticmethod
+    def transaction_digest(tx_data: bytes) -> bytes:
+        """Return the conventional double-SHA256 transaction digest."""
+        tx_data = _bytes(tx_data, "tx_data", allow_empty=False)
+        return hashlib.sha256(hashlib.sha256(tx_data).digest()).digest()
+
     def sign_transaction(self, tx_data: bytes, key_id: str) -> bytes:
-        """
-        Sign transaction with hybrid key
-        
-        Args:
-            tx_data: Unsigned transaction data
-            key_id: Key identifier to use for signing
-            
-        Returns:
-            Signed transaction bytes
-        """
-        if not self.wallet:
+        """Return a versioned hybrid signature over the transaction digest."""
+        if self.wallet is None:
             raise RuntimeError("Wallet not initialized")
-        
-        # Get transaction hash for signing
-        tx_hash = hashlib.sha256(hashlib.sha256(tx_data).digest()).digest()
-        
-        # Sign with hybrid wallet
-        signature = self.wallet.sign_transaction_hybrid(tx_hash, key_id)
-        
-        return signature
-    
-    def verify_transaction_signature(self, tx_data: bytes, signature: bytes,
-                                     key_id: str) -> bool:
-        """
-        Verify transaction signature
-        
-        Args:
-            tx_data: Transaction data
-            signature: Transaction signature
-            key_id: Key identifier for verification
-            
-        Returns:
-            True if signature is valid
-        """
-        if not self.wallet:
+        return self.wallet.sign_transaction_hybrid(
+            self.transaction_digest(tx_data),
+            key_id,
+        )
+
+    def verify_transaction_signature(
+        self,
+        tx_data: bytes,
+        signature: bytes,
+        key_id: str,
+    ) -> bool:
+        """Verify a hybrid signature over the transaction digest."""
+        if self.wallet is None:
             raise RuntimeError("Wallet not initialized")
-        
-        pubkey = self.wallet.get_public_key(key_id)
-        if not pubkey:
+        public_key = self.wallet.get_public_key(key_id)
+        if public_key is None:
             return False
-        
-        # Get transaction hash
-        tx_hash = hashlib.sha256(hashlib.sha256(tx_data).digest()).digest()
-        
-        # Verify signature
-        return self.wallet.verify_transaction_hybrid(tx_hash, signature, pubkey)
-    
-    def estimate_transaction_size(self, num_inputs: int, num_outputs: int,
-                                  tx_type: str = "legacy") -> int:
-        """
-        Estimate transaction size in bytes
-        
-        Args:
-            num_inputs: Number of inputs
-            num_outputs: Number of outputs
-            tx_type: Transaction type ('legacy', 'segwit', 'taproot')
-            
-        Returns:
-            Estimated size in bytes
-        """
-        size = 4  # version
-        
+        return self.wallet.verify_transaction_hybrid(
+            self.transaction_digest(tx_data),
+            signature,
+            public_key,
+        )
+
+    def estimate_transaction_size(
+        self,
+        num_inputs: int,
+        num_outputs: int,
+        tx_type: str = "legacy",
+    ) -> int:
+        """Estimate the unsigned skeleton size with standard 25-byte outputs."""
+        if not isinstance(num_inputs, int) or num_inputs < 1:
+            raise ValueError("num_inputs must be a positive integer")
+        if not isinstance(num_outputs, int) or num_outputs < 1:
+            raise ValueError("num_outputs must be a positive integer")
+        if tx_type not in self.SUPPORTED_TYPES:
+            raise ValueError(f"Unsupported transaction type: {tx_type}")
+        # A typical P2PKH script is used only as an estimate; callers with
+        # exact scripts should serialize the transaction and use len().
+        size = 4 + len(encode_compact_size(num_inputs))
+        size += num_inputs * (32 + 4 + 1 + 25 + 4)
+        size += len(encode_compact_size(num_outputs))
+        size += num_outputs * (8 + 1 + 25)
         if tx_type in ("segwit", "taproot"):
-            size += 2  # witness marker
-        
-        # Inputs
-        size += 1  # input count
-        size += num_inputs * 32  # previous tx hash
-        size += num_inputs * 4   # output index
-        size += num_inputs * 1   # script length
-        size += num_inputs * 71  # approximate signature size
-        size += num_inputs * 4   # sequence
-        
-        # Outputs
-        size += 1  # output count
-        size += num_outputs * 8  # value
-        size += num_outputs * 1  # script length
-        size += num_outputs * 25 # approximate script size
-        
-        size += 4  # locktime
-        
-        return size
-    
-    def calculate_transaction_fee(self, num_inputs: int, num_outputs: int,
-                                  fee_rate: int, tx_type: str = "legacy") -> int:
-        """
-        Calculate transaction fee
-        
-        Args:
-            num_inputs: Number of inputs
-            num_outputs: Number of outputs
-            fee_rate: Fee rate in satoshis per byte
-            tx_type: Transaction type
-            
-        Returns:
-            Fee in satoshis
-        """
-        tx_size = self.estimate_transaction_size(num_inputs, num_outputs, tx_type)
-        return tx_size * fee_rate
-    
+            size += 2 + num_inputs
+        return size + 4
+
+    def calculate_transaction_fee(
+        self,
+        num_inputs: int,
+        num_outputs: int,
+        fee_rate: int,
+        tx_type: str = "legacy",
+    ) -> int:
+        if not isinstance(fee_rate, int) or fee_rate < 0:
+            raise ValueError("fee_rate must be a non-negative integer")
+        return self.estimate_transaction_size(
+            num_inputs,
+            num_outputs,
+            tx_type,
+        ) * fee_rate
+
+    @staticmethod
+    def transaction_id(transaction: bytes) -> str:
+        """Return the display-form TXID for serialized transaction bytes."""
+        digest = BitcoinTransactionBuilder.transaction_digest(transaction)
+        return digest[::-1].hex()
+
     def broadcast_transaction(self, signed_tx: bytes) -> str:
-        """
-        Broadcast signed transaction to Bitcoin network
-        
-        Note: This is a placeholder. In production, use:
-        - python-bitcoinlib
-        - bitcoind RPC
-        - blockchain.info API
-        - Electrum protocol
-        
-        Args:
-            signed_tx: Signed transaction bytes
-            
-        Returns:
-            Transaction ID (TXID)
-        """
-        # Calculate TXID
-        tx_hash = hashlib.sha256(hashlib.sha256(signed_tx).digest()).digest()
-        txid = tx_hash.hex()[::-1]  # Reverse for display format
-        
-        # TODO: Implement actual broadcasting to Bitcoin network
-        print(f"[PLACEHOLDER] Broadcasting transaction: {txid}")
-        
-        return txid
-    
+        """Reject network submission until a configured node adapter exists."""
+        _bytes(signed_tx, "signed_tx", allow_empty=False)
+        raise NotImplementedError(
+            "Bitcoin broadcasting requires an explicit node/RPC integration; "
+            "hybrid signatures are not broadcast as consensus scripts"
+        )
+
     def __repr__(self) -> str:
         return f"BitcoinTransactionBuilder(version={self.version})"
