@@ -1,6 +1,6 @@
-"""Backward-compatible import path for the production PQC adapters."""
+"""Production PQC interfaces used by the wallet."""
 
-from ..pqc.core import (
+from .core import (
     backend_available,
     DilithiumSigner,
     KyberKEM,
@@ -11,8 +11,8 @@ from ..pqc.core import (
 )
 
 __all__ = [
-    "backend_available",
     "DilithiumSigner",
+    "backend_available",
     "KyberKEM",
     "PQCAlgorithm",
     "PQCBackendError",

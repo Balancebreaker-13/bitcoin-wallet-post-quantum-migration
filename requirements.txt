@@ -7,8 +7,8 @@ ecdsa>=0.18.0                  # ECDSA implementation (secp256k1 support)
 pybitcoinlib>=0.6.0            # Bitcoin protocol operations
 
 # Post-Quantum Cryptography
-# Note: liboqs requires pre-installation or compiled bindings
-# liboqs-python>=0.9.0         # Uncomment after liboqs setup
+# liboqs-python loads the native liboqs backend on first use.
+liboqs-python>=0.16.0
 
 # Key Derivation
 mnemonic>=0.20                 # BIP39 mnemonic generation

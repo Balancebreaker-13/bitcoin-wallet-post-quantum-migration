@@ -40,41 +40,41 @@ This roadmap outlines the comprehensive plan for migrating Bitcoin wallets from 
 
 ---
 
-## Phase 2: Design & Planning (Q2 2026) - 🔄 IN PROGRESS
+## Phase 2: Design & Planning (Q2 2026) - ✅ COMPLETED
 
 ### 2.1 Architecture Design
 **Documentation:**
-- [ ] Design hybrid wallet architecture
-- [ ] Create data flow diagrams
-- [ ] Define API specifications
-- [ ] Document key storage improvements
-- [ ] Create security requirements document
+- [x] Design hybrid wallet architecture
+- [x] Create data flow diagrams
+- [x] Define API specifications
+- [x] Document key storage improvements
+- [x] Create security requirements document
 
 **Design Documentation:** `docs/design/architecture.md`
 
 ### 2.2 Implementation Planning
 **Documentation:**
-- [ ] Create detailed implementation plan
-- [ ] Define testing strategy
-- [ ] Plan integration approach
-- [ ] Document deployment strategy
-- [ ] Create risk mitigation plan
+- [x] Create detailed implementation plan
+- [x] Define testing strategy
+- [x] Plan integration approach
+- [x] Document deployment strategy
+- [x] Create risk mitigation plan
 
 **Planning Document:** `docs/design/implementation_plan.md`
 
 ### 2.3 Proof of Concept (PoC)
 **Tasks:**
-- [ ] Set up development environment with liboqs
-- [ ] Create basic Dilithium signature implementation
-- [ ] Create basic Kyber KEM implementation
-- [ ] Build simple hybrid key generation demo
-- [ ] Document PoC results
+- [x] Set up development environment with liboqs
+- [x] Create basic Dilithium signature implementation
+- [x] Create basic Kyber KEM implementation
+- [x] Build simple hybrid key generation demo
+- [x] Document PoC results
 
 **PoC Files:** `poc/dilithium_demo.py`, `poc/kyber_demo.py`
 
 ---
 
-## Phase 3: Core Implementation (Q3-Q4 2026) - ⏳ UPCOMING
+## Phase 3: Core Implementation (Q3-Q4 2026) - 🔄 IN PROGRESS
 
 ### 3.1 Post-Quantum Cryptography Library Setup
 
@@ -161,11 +161,20 @@ class KyberKEM(PQCAlgorithm):
 ```
 
 **Tasks:**
-- [ ] Set up liboqs bindings
-- [ ] Implement Dilithium signer
-- [ ] Implement Kyber KEM
-- [ ] Create wrapper classes
-- [ ] Write unit tests
+- [x] Set up liboqs-python dependency and native backend loading
+- [x] Implement ML-DSA (Dilithium) signer wrapper
+- [x] Implement ML-KEM (Kyber) wrapper
+- [x] Create version-compatible wrapper classes
+- [x] Write unit tests for backend availability, validation, and round trips
+
+**Implementation Notes:**
+- Production code lives in `src/pqc/core.py` and delegates all cryptographic
+  operations to liboqs; it never substitutes random bytes for cryptographic
+  material.
+- ML-DSA and ML-KEM names are preferred, with legacy Dilithium and Kyber names
+  supported for older liboqs-python installations.
+- A missing native backend raises `PQCBackendUnavailable` instead of silently
+  producing insecure placeholder output.
 
 **File:** `src/pqc/core.py`
 
@@ -781,4 +790,4 @@ This project is licensed under the Apache License 2.0. See LICENSE file for deta
 
 **Last Updated:** September 1, 2026  
 **Maintained By:** Balancebreaker-13
-**Next Phase:** Phase 2 - Design & Planning (In Progress)
+**Next Phase:** Phase 3 - Hybrid wallet integration and Bitcoin transaction support
