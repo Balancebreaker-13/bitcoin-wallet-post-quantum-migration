@@ -1,15 +1,15 @@
-"""Hybrid ECC and post-quantum wallet primitives."""
+"""Hybrid ECC+PQC wallet implementation."""
 
 from .hybrid_wallet import (
-    HybridPrivateKey,
-    HybridPublicKey,
-    HybridSignature,
     HybridWallet,
+    HybridPublicKey,
+    HybridPrivateKey,
+    HybridSignature,
 )
 
 __all__ = [
-    "HybridPrivateKey",
-    "HybridPublicKey",
-    "HybridSignature",
     "HybridWallet",
+    "HybridPublicKey",
+    "HybridPrivateKey",
+    "HybridSignature",
 ]
