@@ -39,6 +39,14 @@ def test_ecdsa_signatures_are_real_and_tamper_evident():
     assert ecdsa.verify(message, signature, public_key)
     assert not ecdsa.verify(b"tampered transaction", signature, public_key)
     assert not ecdsa.verify(message, signature[:-1], public_key)
+    assert ecdsa._validate_private_key(private_key)
+    assert not ecdsa._validate_private_key(b"short")
+    with pytest.raises(TypeError):
+        ecdsa.sign("not bytes", private_key)
+    with pytest.raises(ValueError):
+        ecdsa.sign(message, bytes(32))
+    assert not ecdsa.verify(message, signature, b"short")
+    assert not ecdsa.verify(message, object(), public_key)
 
 
 def test_hybrid_wallet_generates_signs_and_serializes_keys():
@@ -106,3 +114,21 @@ def test_hybrid_wallet_requires_known_private_key():
     wallet = HybridWallet(pqc_signer=StubPQCSigner())
     with pytest.raises(KeyError):
         wallet.sign_transaction_hybrid(b"tx", "missing")
+
+
+def test_hybrid_wallet_rejects_mismatched_imported_keys():
+    wallet = HybridWallet(pqc_signer=StubPQCSigner())
+    public_key = wallet.generate_hybrid_keypair()
+    private_key = wallet.get_private_key(public_key.key_id)
+    assert private_key is not None
+    with pytest.raises(ValueError):
+        wallet.import_keypair(
+            public_key,
+            type(private_key)(
+                private_key.ecc_privkey,
+                private_key.pqc_privkey,
+                "different",
+                private_key.created_at,
+                private_key.pqc_algorithm,
+            ),
+        )

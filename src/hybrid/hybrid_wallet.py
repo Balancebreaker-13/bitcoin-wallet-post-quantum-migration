@@ -224,6 +224,22 @@ class HybridWallet:
     def get_private_key(self, key_id: str) -> Optional[HybridPrivateKey]:
         return self.private_keys.get(key_id)
 
+    def import_keypair(
+        self,
+        public_key: HybridPublicKey,
+        private_key: HybridPrivateKey,
+    ) -> None:
+        """Restore a keypair after validating its identity and ECC binding."""
+        if public_key.key_id != private_key.key_id:
+            raise ValueError("Public and private key IDs do not match")
+        derived_public = self.ecc._derive_public_key(private_key.ecc_privkey)
+        if derived_public != public_key.ecc_pubkey:
+            raise ValueError("Private key does not match the ECC public key")
+        if public_key.pqc_algorithm != private_key.pqc_algorithm:
+            raise ValueError("Public and private PQC algorithms do not match")
+        self.public_keys[public_key.key_id] = public_key
+        self.private_keys[private_key.key_id] = private_key
+
     def remove_key(self, key_id: str) -> bool:
         removed = key_id in self.public_keys or key_id in self.private_keys
         self.public_keys.pop(key_id, None)

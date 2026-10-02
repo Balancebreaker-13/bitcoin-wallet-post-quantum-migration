@@ -1,40 +1,32 @@
-# Security Signoff
+# Security Status — No Beta or Production Signoff
 
-## Scope
+**Status: not approved for beta deployment or production use.**
 
-This signoff covers the hybrid wallet migration implementation for the current beta release candidate. The review includes the PQC adapters, the hybrid wallet logic, the ECDSA compatibility layer, the Bitcoin transaction builder, and the encrypted key store.
+This status supersedes prior wording that described the project as approved for
+beta-stage use. The work to date is a focused engineering review, not an
+independent third-party security audit, consensus review, or side-channel
+assessment.
 
-## Security outcome
+## Verified scope
 
-- The implementation uses fail-closed backend handling for missing PQC support.
-- The wallet enforces strict validation of hybrid signatures.
-- The encrypted key store uses PBKDF2 and Fernet-based storage protection.
-- No critical security issues were identified in the current audit review.
+- The full local test suite most recently passed 55 tests, with 1
+  backend-dependent test skipped; measured statement coverage was 80%.
+- Bitcoin Core RPC behavior is covered by mocked responses only. It has not
+  been verified against a live regtest node.
+- Published BIP340 signing vectors and BIP341 wallet key-tweak/control-block
+  vectors are covered. Sighash and witness behavior has unit coverage but has
+  not been cross-checked against an authoritative BIP341 sighash vector.
 
-## Risk assessment
+## Reasons signoff is withheld
 
-### Accepted risks
+- The hybrid ML-DSA envelope is not a Bitcoin consensus script.
+- A full Tapscript interpreter and a consensus-compatible post-quantum spending
+  protocol are not implemented.
+- No independent cryptographic integration or side-channel review has been
+  completed.
+- No live Bitcoin Core regtest validation or transaction confirmation workflow
+  has been completed.
 
-- PQC keys and signatures are significantly larger than traditional ECDSA data.
-- Transaction broadcast is intentionally not implemented in the core library.
-- Real-world deployment requires an explicit node/RPC integration layer and operational controls.
-
-### Residual recommendations
-
-- Validate on a controlled testnet environment before broader user exposure.
-- Continue monitoring dependency and library updates for liboqs and related tooling.
-- Document backup and recovery procedures for encrypted key materials.
-
-## Signoff status
-
-- Security review: approved for beta-stage use
-- Engineering validation: approved for beta-stage use
-- Deployment recommendation: proceed with controlled beta rollout under documented operational controls
-
-## Approver
-
-Balancebreaker-13
-
-## Date
-
-October 1, 2026
+Do not use this prototype to protect real funds or broadcast transactions on
+mainnet. Reassess this status only after the outstanding requirements in
+[`ROADMAP.md`](ROADMAP.md) have been verified.

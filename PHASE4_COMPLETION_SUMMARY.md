@@ -1,33 +1,29 @@
-# Phase 4 Completion Summary
+# Phase 4 Validation Status
 
-**Date:** October 1, 2026
-**Status:** ✅ COMPLETE
-**Phase:** 4 - Testing & Validation
+**Status: core test work completed; release and production validation remain
+open.**
 
-## Overview
+## Verified
 
-Phase 4 completed the validation pass for the hybrid Bitcoin wallet migration implementation. The project moved from core implementation into a verification phase covering integration correctness, benchmark guardrails, and security documentation.
+- Latest full local test run: 55 passed, 1 skipped.
+- Latest measured statement coverage: 80% on Python 3.13.11.
+- Bitcoin Core RPC request and broadcast checks have mocked-node tests.
+- A repeatable wallet cryptography and key-store benchmark harness is present.
 
-## Completed work
+## Still open
 
-### Integration validation
-- End-to-end wallet creation and signing checks were completed in `tests/test_integration.py`
-- Cross-wallet verification and key storage workflows were validated
-- Transaction signing and tamper detection tests were confirmed
+- The skipped test requires the native liboqs backend, which was unavailable in
+  the latest environment.
+- The benchmark harness could not produce a representative run because its
+  native backend build did not complete; deployment-hardware results are not
+  available.
+- No live Bitcoin Core regtest validation has been performed.
+- Taproot sighash handling still needs comparison against an authoritative
+  BIP341 sighash vector.
+- No independent cryptographic, consensus, or side-channel review has been
+  completed.
 
-### Performance validation
-- Benchmark coverage was added in `tests/test_performance.py`
-- Key generation, signing, verification, and transaction serialization were checked for baseline performance
-
-### Security review
-- The audit report was completed in `docs/security/audit_report.md`
-- No critical issues were identified
-- Known limitations were documented and tracked
-
-### Roadmap update
-- The roadmap status was updated to reflect Phase 4 completion
-- The next active phase is documentation and release-readiness preparation
-
-## Result
-
-The project is validated for continued execution into documentation and eventual beta release engineering. The core cryptographic and wallet mechanisms are considered stable, documented, and ready for the next project phase.
+These results do not establish beta or production readiness. See
+[`ROADMAP.md`](ROADMAP.md) and
+[`docs/security/audit_report.md`](docs/security/audit_report.md) for the
+remaining release gates.

@@ -50,25 +50,31 @@ def _length_prefixed(value: bytes, name: str) -> bytes:
 
 @dataclass(frozen=True)
 class TransactionInput:
-    """A Bitcoin transaction input without its unlocking script."""
+    """A Bitcoin input plus metadata for the referenced output.
+
+    ``script_pubkey`` describes the previous output and is never serialized in
+    the input. ``script_sig`` is the unlocking script serialized on the wire.
+    """
 
     previous_tx_hash: bytes
     previous_output_index: int
     script_pubkey: bytes
     sequence: int = MAX_UINT32
     witness: Sequence[bytes] = ()
+    script_sig: bytes = b""
 
     def __post_init__(self) -> None:
         tx_hash = _bytes(self.previous_tx_hash, "previous_tx_hash")
         script = _bytes(self.script_pubkey, "script_pubkey")
+        script_sig = _bytes(self.script_sig, "script_sig")
         if len(tx_hash) != 32:
             raise ValueError("previous_tx_hash must be exactly 32 bytes")
         if not 0 <= self.previous_output_index <= MAX_UINT32:
             raise ValueError("previous_output_index must fit in uint32")
         if not 0 <= self.sequence <= MAX_UINT32:
             raise ValueError("sequence must fit in uint32")
-        if len(script) > MAX_UINT64:
-            raise ValueError("script_pubkey is too large")
+        if len(script) > MAX_UINT64 or len(script_sig) > MAX_UINT64:
+            raise ValueError("input script is too large")
         for item in self.witness:
             if len(_bytes(item, "witness item")) > MAX_UINT64:
                 raise ValueError("witness item is too large")
@@ -78,7 +84,7 @@ class TransactionInput:
         return (
             bytes(self.previous_tx_hash)
             + self.previous_output_index.to_bytes(4, "little")
-            + _length_prefixed(self.script_pubkey, "script_pubkey")
+            + _length_prefixed(self.script_sig, "script_sig")
             + self.sequence.to_bytes(4, "little")
         )
 
@@ -120,8 +126,9 @@ class BitcoinTransactionBuilder:
     OP_CHECKSIG = 0xAC
     SUPPORTED_TYPES = frozenset(("legacy", "segwit", "taproot"))
 
-    def __init__(self, hybrid_wallet=None):
+    def __init__(self, hybrid_wallet=None, rpc_client=None):
         self.wallet = hybrid_wallet
+        self.rpc_client = rpc_client
         self.version = 2
         self.locktime = 0
 
@@ -168,6 +175,8 @@ class BitcoinTransactionBuilder:
         result += encode_compact_size(len(inputs))
         result += b"".join(tx_input.serialize() for tx_input in inputs)
         result += encode_compact_size(len(outputs))
+        if sum(output.value for output in outputs) > MAX_MONEY:
+            raise ValueError("Total output value exceeds the Bitcoin money limit")
         result += b"".join(tx_output.serialize() for tx_output in outputs)
         if tx_type in ("segwit", "taproot"):
             result += b"".join(tx_input.serialize_witness() for tx_input in inputs)
@@ -251,12 +260,17 @@ class BitcoinTransactionBuilder:
         return digest[::-1].hex()
 
     def broadcast_transaction(self, signed_tx: bytes) -> str:
-        """Reject network submission until a configured node adapter exists."""
+        """Broadcast only through an explicitly configured authenticated client."""
         _bytes(signed_tx, "signed_tx", allow_empty=False)
-        raise NotImplementedError(
-            "Bitcoin broadcasting requires an explicit node/RPC integration; "
-            "hybrid signatures are not broadcast as consensus scripts"
-        )
+        if self.rpc_client is None:
+            raise NotImplementedError(
+                "Bitcoin broadcasting requires an explicitly configured "
+                "authenticated node/RPC integration"
+            )
+        broadcaster = getattr(self.rpc_client, "broadcast_transaction", None)
+        if not callable(broadcaster):
+            raise TypeError("rpc_client must provide broadcast_transaction(bytes)")
+        return broadcaster(bytes(signed_tx))
 
     def __repr__(self) -> str:
         return f"BitcoinTransactionBuilder(version={self.version})"

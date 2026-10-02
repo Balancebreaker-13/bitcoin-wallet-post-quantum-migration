@@ -1,4 +1,4 @@
-"""Bitcoin integration for post-quantum wallets."""
+"""Bitcoin transaction and consensus-signing primitives."""
 
 from .integration import (
     BitcoinTransactionBuilder,
@@ -6,10 +6,53 @@ from .integration import (
     TransactionOutput,
     encode_compact_size,
 )
+from .taproot import (
+    SIGHASH_ALL,
+    SIGHASH_ANYONECANPAY,
+    SIGHASH_DEFAULT,
+    SIGHASH_NONE,
+    SIGHASH_SINGLE,
+    TaprootOutputKey,
+    schnorr_sign,
+    schnorr_verify,
+    taproot_keypath_sign,
+    taproot_control_block,
+    taproot_scriptpath_sign,
+    taproot_scriptpath_witness,
+    taproot_sighash,
+    tapbranch_hash,
+    tapleaf_hash,
+    taproot_tweak_private_key,
+    taproot_tweak_pubkey,
+    verify_taproot_control_block,
+    xonly_public_key,
+)
+from .rpc import BitcoinCoreRpcClient, BitcoinRpcError
 
 __all__ = [
     "BitcoinTransactionBuilder",
+    "BitcoinCoreRpcClient",
+    "BitcoinRpcError",
+    "SIGHASH_ALL",
+    "SIGHASH_ANYONECANPAY",
+    "SIGHASH_DEFAULT",
+    "SIGHASH_NONE",
+    "SIGHASH_SINGLE",
+    "TaprootOutputKey",
     "TransactionInput",
     "TransactionOutput",
     "encode_compact_size",
+    "schnorr_sign",
+    "schnorr_verify",
+    "taproot_keypath_sign",
+    "taproot_control_block",
+    "taproot_scriptpath_sign",
+    "taproot_scriptpath_witness",
+    "taproot_sighash",
+    "tapbranch_hash",
+    "tapleaf_hash",
+    "taproot_tweak_private_key",
+    "taproot_tweak_pubkey",
+    "verify_taproot_control_block",
+    "xonly_public_key",
 ]

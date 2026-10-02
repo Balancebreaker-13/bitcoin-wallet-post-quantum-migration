@@ -3,6 +3,7 @@
 
 # Cryptographic Libraries
 cryptography>=41.0.0           # General cryptographic operations
+coincurve>=21.0.0,<22.0.0        # pin CFFI API used for libsecp scalar operations
 ecdsa>=0.18.0                  # ECDSA implementation (secp256k1 support)
 pybitcoinlib>=0.6.0            # Bitcoin protocol operations
 

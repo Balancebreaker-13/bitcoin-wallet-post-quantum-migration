@@ -59,3 +59,12 @@ def test_malformed_keys_are_rejected_without_backend_operation():
     kem = KyberKEM(768)
     with pytest.raises(ValueError):
         kem.encapsulate(b"not-a-public-key")
+
+
+def test_pqc_input_types_are_rejected():
+    if not backend_available():
+        pytest.skip("liboqs is not available")
+    signer = DilithiumSigner()
+    with pytest.raises(TypeError):
+        signer.sign("message", b"\x00" * signer.key_sizes["priv"])
+    assert not signer.verify("message", b"bad", b"bad")

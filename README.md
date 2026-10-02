@@ -1,205 +1,54 @@
 # Bitcoin Wallet Post-Quantum Migration
 
-A hybrid Bitcoin wallet prototype that combines a Bitcoin-compatible secp256k1 ECDSA layer with NIST-standardized post-quantum cryptography to provide a practical migration path for quantum-resistant wallet operations.
+A research and prototyping project for exploring Bitcoin-compatible wallet
+primitives alongside post-quantum cryptography.
 
-Status: Beta-ready
-Current phase: Documentation and beta release preparation complete
+**Status: research prototype. It is not ready for beta deployment, mainnet use,
+or handling real funds.**
 
-## Overview
+## Implemented
 
-This project demonstrates a migration strategy for Bitcoin wallets that must stay compatible with existing systems while moving toward post-quantum cryptographic protections. The implementation includes:
+- secp256k1 ECDSA and BIP340 Schnorr operations
+- BIP341 key tweaks, TapLeaf/TapBranch hashing, control-block verification,
+  sighash construction, and witness helpers
+- Hybrid wallet envelopes using ML-DSA alongside the legacy signature path
+- Encrypted key storage and deterministic transaction serialization
+- Opt-in, cookie-authenticated Bitcoin Core JSON-RPC with chain and mempool
+  checks before explicit broadcast
 
-- secp256k1 ECDSA for Bitcoin-compatible signing
-- ML-DSA (Dilithium) for quantum-resistant signatures
-- ML-KEM (Kyber) for KEM-based flows
-- encrypted key storage for wallet persistence
-- deterministic transaction serialization helpers
+The hybrid ML-DSA envelope is **not** a Bitcoin consensus script. The RPC
+client has only been tested with mocked node responses; no live regtest
+verification has been completed.
 
-The project is designed as a research, prototype, and validation framework rather than a production network broadcaster.
+## Validation and open requirements
 
-## Key goals
+The latest full test run passed 55 tests and skipped 1 backend-dependent test,
+with 80% statement coverage on Python 3.13.11. The wallet benchmark harness is
+repeatable but requires a working native liboqs backend; no representative
+deployment-hardware performance result is claimed.
 
-- Provide a hybrid wallet model that preserves Bitcoin compatibility
-- Demonstrate a migration path from legacy ECC to PQC
-- Validate deterministic transaction behavior and signature workflows
-- Ship a documentation set covering setup, usage, architecture, and security
-- Prepare the repository for controlled beta use
+Before any beta or production use, the project still needs live Bitcoin Core
+regtest validation, authoritative BIP341 sighash-vector cross-checking, a
+consensus-compatible post-quantum spending design, full Tapscript integration,
+and independent cryptographic and side-channel review. See
+[`ROADMAP.md`](ROADMAP.md) and
+[`docs/security/audit_report.md`](docs/security/audit_report.md).
 
-## Repository layout
+## Development
 
-```text
-bitcoin-wallet-post-quantum-migration/
-├── src/
-│   ├── pqc/
-│   │   └── core.py
-│   ├── crypto/
-│   │   └── ecdsa_module.py
-│   ├── hybrid/
-│   │   └── hybrid_wallet.py
-│   ├── bitcoin/
-│   │   └── integration.py
-│   └── key_management/
-│       └── key_store.py
-├── tests/
-│   ├── test_pqc_core.py
-│   ├── test_hybrid_wallet.py
-│   ├── test_bitcoin_integration.py
-│   ├── test_integration.py
-│   └── test_performance.py
-├── docs/
-│   ├── api/
-│   ├── design/
-│   ├── research/
-│   ├── security/
-│   ├── user_guide/
-│   └── developer_guide/
-├── poc/
-├── requirements.txt
-├── CONTRIBUTING.md
-├── ROADMAP.md
-├── RELEASE_NOTES.md
-├── BETA_RELEASE_CHECKLIST.md
-├── SECURITY_SIGNOFF.md
-├── PHASE3_COMPLETION_SUMMARY.md
-├── PHASE4_COMPLETION_SUMMARY.md
-├── LICENSE
-└── README.md
-```
-
-## Installation
+Run the test suite from this directory:
 
 ```bash
-git clone https://github.com/Balancebreaker-13/bitcoin-wallet-post-quantum-migration.git
-cd bitcoin-wallet-post-quantum-migration
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python -m pytest -q tests
+python -m pytest --cov=src --cov-report=term-missing -q tests
 ```
 
-If the liboqs backend is not available, install the native liboqs runtime and Python bindings required by the PQC adapters before continuing.
-
-## Quickstart
-
-```python
-from src.hybrid import HybridWallet
-from src.bitcoin.integration import (
-    BitcoinTransactionBuilder,
-    TransactionInput,
-    TransactionOutput,
-)
-
-wallet = HybridWallet()
-public_key = wallet.generate_hybrid_keypair()
-
-builder = BitcoinTransactionBuilder(wallet)
-tx = builder.create_transaction(
-    [
-        TransactionInput(
-            previous_tx_hash=bytes(32),
-            previous_output_index=0,
-            script_pubkey=b"\x51",
-        )
-    ],
-    [
-        TransactionOutput(value=50_000, script_pubkey=b"\x51")
-    ],
-)
-
-signature = builder.sign_transaction(tx, public_key.key_id)
-verified = builder.verify_transaction_signature(tx, signature, public_key.key_id)
-
-print("key_id:", public_key.key_id)
-print("signature_valid:", verified)
-```
-
-## Tests
-
-Run the full suite:
+Run the cryptography and key-store microbenchmarks after confirming the real
+native liboqs backend is available:
 
 ```bash
-pytest -q
+python benchmarks/benchmark_wallet.py
 ```
 
-Run focused suites:
-
-```bash
-pytest tests/test_pqc_core.py -q
-pytest tests/test_hybrid_wallet.py -q
-pytest tests/test_bitcoin_integration.py -q
-pytest tests/test_integration.py -q
-pytest tests/test_performance.py -q
-```
-
-## Security model
-
-This project intentionally follows a fail-closed security model.
-
-Important behavior:
-- missing PQC backend support raises explicit errors
-- wallet verification requires both signatures to validate
-- transaction broadcasting is intentionally not implemented in the core wallet library
-- key storage uses encrypted persistence and separation of private material from public metadata
-
-The project includes a documented security review in `docs/security/audit_report.md`.
-
-## Documentation
-
-User guides:
-- `docs/user_guide/getting_started.md`
-- `docs/user_guide/creating_wallet.md`
-- `docs/user_guide/key_management.md`
-- `docs/user_guide/transaction_signing.md`
-
-Developer guides:
-- `docs/developer_guide/setup.md`
-- `docs/developer_guide/architecture.md`
-- `docs/developer_guide/contributing.md`
-- `docs/developer_guide/testing.md`
-
-Project planning:
-- `ROADMAP.md`
-- `PHASE3_COMPLETION_SUMMARY.md`
-- `PHASE4_COMPLETION_SUMMARY.md`
-
-Release and security:
-- `RELEASE_NOTES.md`
-- `BETA_RELEASE_CHECKLIST.md`
-- `SECURITY_SIGNOFF.md`
-
-## Current status
-
-The project has completed:
-- Phase 1: research and analysis
-- Phase 2: design and planning
-- Phase 3: core implementation
-- Phase 4: testing and validation
-- Phase 5: documentation and release preparation
-
-The repository is now ready for a controlled beta rollout with documented operational safeguards.
-
-## Known limitations
-
-- Broadcasting to the Bitcoin network remains intentionally unimplemented
-- PQC signatures are larger than legacy ECDSA signatures
-- Real-world deployment requires an explicit node/RPC integration boundary
-- Additional operational and production hardening should occur before broad public release
-
-## Contributing
-
-Please see `CONTRIBUTING.md` for contribution guidelines.
-
-## License
-
-This project is licensed under the Apache License 2.0. See `LICENSE` for details.
-
-## References
-
-- NIST PQC Project
-- ML-DSA (FIPS 204)
-- ML-KEM (FIPS 203)
-- Bitcoin BIPs
-- liboqs Documentation
-
-## Maintainer
-
-Balancebreaker-13
+See [`docs/api/bitcoin_integration.md`](docs/api/bitcoin_integration.md) for
+the transaction, Taproot, and RPC interfaces.
