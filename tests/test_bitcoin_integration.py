@@ -65,6 +65,22 @@ def test_segwit_serialization_includes_marker_flag_and_witness_stack():
     assert b"\x01\x07witness" in transaction
 
 
+def test_segwit_txid_excludes_witness_but_wtxid_includes_it():
+    builder = BitcoinTransactionBuilder()
+    transaction = builder.create_transaction(
+        [_input(witness=(b"witness",))],
+        [TransactionOutput(2_000, b"\x51")],
+        tx_type="segwit",
+    )
+
+    txid = BitcoinTransactionBuilder.transaction_id(transaction)
+    wtxid = BitcoinTransactionBuilder.witness_transaction_id(transaction)
+    assert txid != wtxid
+    assert txid == BitcoinTransactionBuilder.transaction_id(transaction)
+    assert wtxid == BitcoinTransactionBuilder.witness_transaction_id(transaction)
+    assert BitcoinTransactionBuilder.transaction_id(transaction) != BitcoinTransactionBuilder.transaction_id(transaction + b"\x00")
+
+
 def test_script_helpers_validate_hash_lengths():
     builder = BitcoinTransactionBuilder()
     assert builder.create_p2pkh_script(bytes(20)) == b"\x76\xa9\x14" + bytes(20) + b"\x88\xac"
