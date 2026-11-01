@@ -1,8 +1,8 @@
-# Post-Quantum Cryptography - Bitcoin Wallet Migration PoC
+# WISDOM NETWORK WALLET PoC
 
 ## Overview
 
-This Proof of Concept (PoC) demonstrates the integration of post-quantum cryptography (PQC) algorithms into Bitcoin wallet infrastructure. The PoC showcases:
+This Proof of Concept (PoC) demonstrates the integration of post-quantum cryptography (PQC) algorithms into a secure wallet infrastructure. The PoC showcases:
 
 - **Dilithium**: NIST-standardized post-quantum digital signature scheme
 - **Kyber**: NIST-standardized post-quantum key encapsulation mechanism
@@ -222,8 +222,8 @@ poc/
 ├── kyber_demo.py                 # Kyber PoC
 ├── hybrid_key_demo.py            # Hybrid key generation
 ├── test_poc.py                   # Test suite
-├── README.md                      # This file
-└── keys/                          # Generated keys (not in repo)
+├── README.md                     # This file
+└── keys/                         # Generated keys (not in repo)
     ├── dilithium_keys.json
     ├── kyber_keys.json
     └── hybrid_keys.json

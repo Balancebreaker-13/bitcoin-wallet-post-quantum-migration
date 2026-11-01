@@ -3,7 +3,7 @@
 Run from the project root:
 
 ```sh
-python bitcoin-wallet-post-quantum-migration/benchmarks/benchmark_wallet.py
+python WISDOM-NETWORK-WALLET/benchmarks/benchmark_wallet.py
 ```
 
 Use `--iterations`, `--warmups`, and `--output report.json` to control or save a
