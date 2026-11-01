@@ -295,7 +295,7 @@ def taproot_tweak_private_key(
     private = PrivateKey(private_key)
     if private.public_key.format(compressed=True)[0] == 0x03:
         private = PrivateKey(_negate_private_scalar(private_key))
-    internal_key = PublicKeyXOnly.from_secret(private_key).format()
+    internal_key = PublicKeyXOnly.from_secret(private.secret).format()
     tweaked = taproot_tweak_pubkey(internal_key, merkle_root)
     try:
         tweaked_private = private.add(tweaked.tweak.to_bytes(32, "big"))
@@ -312,11 +312,41 @@ def taproot_keypath_sign(
     aux_rand: Optional[bytes] = None,
     sighash_type: int = SIGHASH_DEFAULT,
 ) -> bytes:
-    """Sign a BIP341 key-path sighash, appending a non-default sighash byte."""
+    """Sign a BIP341 key-path sighash using the tweaked key-path scalar."""
     _validate_sighash_type(sighash_type)
     tweaked_key, _ = taproot_tweak_private_key(private_key, merkle_root)
     signature = schnorr_sign(message, tweaked_key, aux_rand=aux_rand)
     return encode_taproot_signature(signature, sighash_type)
+
+
+def taproot_keypath_verify(
+    message: bytes,
+    signature: bytes,
+    internal_key: bytes,
+    *,
+    merkle_root: bytes = b"",
+    sighash_type: Optional[int] = None,
+) -> bool:
+    """Verify a BIP341 key-path signature against the tweaked output key."""
+    try:
+        message = _message(message)
+        if len(signature) not in (64, 65):
+            return False
+        sig = _bytes(signature[:64], "signature", length=64)
+        if len(signature) == 65:
+            signed_sighash = signature[-1]
+            if sighash_type is not None and signed_sighash != sighash_type:
+                return False
+            _validate_sighash_type(signed_sighash)
+        elif sighash_type is not None:
+            _validate_sighash_type(sighash_type)
+        output_key = taproot_tweak_pubkey(
+            _bytes(internal_key, "internal_key", length=32),
+            merkle_root,
+        ).output_key
+        return schnorr_verify(message, sig, output_key)
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def encode_taproot_signature(signature: bytes, sighash_type: int) -> bytes:
@@ -381,7 +411,7 @@ def _serialize_prevout(prevout: Any) -> bytes:
 def _serialize_output(output: Any) -> bytes:
     value = output.value
     if not isinstance(value, int) or not 0 <= value <= 21_000_000 * 100_000_000:
-        raise ValueError("output value is outside the Bitcoin money range")
+        raise ValueError("prevout value is outside the Bitcoin money range")
     return value.to_bytes(8, "little") + _script(output.script_pubkey, "script_pubkey")
 
 
@@ -493,6 +523,7 @@ __all__ = [
     "schnorr_verify",
     "tagged_hash",
     "taproot_keypath_sign",
+    "taproot_keypath_verify",
     "taproot_control_block",
     "taproot_scriptpath_sign",
     "taproot_scriptpath_witness",
@@ -504,3 +535,5 @@ __all__ = [
     "verify_taproot_control_block",
     "xonly_public_key",
 ]
+
+"""""""
