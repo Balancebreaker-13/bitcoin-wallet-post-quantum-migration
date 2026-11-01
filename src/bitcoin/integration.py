@@ -48,6 +48,26 @@ def _length_prefixed(value: bytes, name: str) -> bytes:
     return encode_compact_size(len(value)) + value
 
 
+def _read_compact_size(data: bytes, start: int) -> tuple[int, int]:
+    """Return (value, next_index) for a CompactSize value beginning at start."""
+    if start >= len(data):
+        raise ValueError("CompactSize value is truncated")
+    first = data[start]
+    if first < 0xFD:
+        return first, start + 1
+    if first == 0xFD:
+        if start + 3 > len(data):
+            raise ValueError("CompactSize value is truncated")
+        return int.from_bytes(data[start + 1:start + 3], "little"), start + 3
+    if first == 0xFE:
+        if start + 5 > len(data):
+            raise ValueError("CompactSize value is truncated")
+        return int.from_bytes(data[start + 1:start + 5], "little"), start + 5
+    if start + 9 > len(data):
+        raise ValueError("CompactSize value is truncated")
+    return int.from_bytes(data[start + 1:start + 9], "little"), start + 9
+
+
 @dataclass(frozen=True)
 class TransactionInput:
     """A Bitcoin input plus metadata for the referenced output.
@@ -139,6 +159,33 @@ class BitcoinTransactionBuilder:
             raise ValueError(f"{name} must be exactly {expected_size} bytes")
         return value
 
+    @staticmethod
+    def _strip_witness_data(transaction: bytes) -> bytes:
+        """Return the non-witness serialization used to compute a SegWit txid."""
+        transaction = _bytes(transaction, "transaction", allow_empty=False)
+        if len(transaction) < 10:
+            return transaction
+        if transaction[4:6] != b"\x00\x01":
+            return transaction
+        pos = 6
+        vin_count, pos = _read_compact_size(transaction, pos)
+        for _ in range(vin_count):
+            if pos + 32 + 4 > len(transaction):
+                raise ValueError("transaction is truncated before the inputs")
+            pos += 32 + 4
+            script_len, pos = _read_compact_size(transaction, pos)
+            pos += script_len + 4
+        vout_count, pos = _read_compact_size(transaction, pos)
+        for _ in range(vout_count):
+            if pos + 8 > len(transaction):
+                raise ValueError("transaction is truncated before the outputs")
+            pos += 8
+            script_len, pos = _read_compact_size(transaction, pos)
+            pos += script_len
+        if pos + 4 > len(transaction):
+            raise ValueError("transaction is truncated before the locktime field")
+        return transaction[:4] + transaction[6:pos] + transaction[-4:]
+
     def create_p2pkh_script(self, pubkey_hash: bytes) -> bytes:
         pubkey_hash = self._validate_script_hash(pubkey_hash, 20, "pubkey_hash")
         return bytes(
@@ -228,8 +275,6 @@ class BitcoinTransactionBuilder:
             raise ValueError("num_outputs must be a positive integer")
         if tx_type not in self.SUPPORTED_TYPES:
             raise ValueError(f"Unsupported transaction type: {tx_type}")
-        # A typical P2PKH script is used only as an estimate; callers with
-        # exact scripts should serialize the transaction and use len().
         size = 4 + len(encode_compact_size(num_inputs))
         size += num_inputs * (32 + 4 + 1 + 25 + 4)
         size += len(encode_compact_size(num_outputs))
@@ -255,7 +300,18 @@ class BitcoinTransactionBuilder:
 
     @staticmethod
     def transaction_id(transaction: bytes) -> str:
-        """Return the display-form TXID for serialized transaction bytes."""
+        """Return the display-form txid for serialized transaction bytes.
+
+        SegWit txids are computed over the non-witness serialization. The witness
+        stack and the marker/flag bytes are excluded from the txid hash.
+        """
+        tx_data = BitcoinTransactionBuilder._strip_witness_data(transaction)
+        digest = BitcoinTransactionBuilder.transaction_digest(tx_data)
+        return digest[::-1].hex()
+
+    @staticmethod
+    def witness_transaction_id(transaction: bytes) -> str:
+        """Return the wtxid for a SegWit transaction, including witness data."""
         digest = BitcoinTransactionBuilder.transaction_digest(transaction)
         return digest[::-1].hex()
 
