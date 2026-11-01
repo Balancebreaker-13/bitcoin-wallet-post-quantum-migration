@@ -411,7 +411,7 @@ def _serialize_prevout(prevout: Any) -> bytes:
 def _serialize_output(output: Any) -> bytes:
     value = output.value
     if not isinstance(value, int) or not 0 <= value <= 21_000_000 * 100_000_000:
-        raise ValueError("prevout value is outside the Bitcoin money range")
+        raise ValueError("output value is outside the Bitcoin money range")
     return value.to_bytes(8, "little") + _script(output.script_pubkey, "script_pubkey")
 
 
@@ -535,5 +535,3 @@ __all__ = [
     "verify_taproot_control_block",
     "xonly_public_key",
 ]
-
-"""""""
