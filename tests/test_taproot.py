@@ -16,6 +16,7 @@ from src.bitcoin.taproot import (
     taproot_control_block,
     tagged_hash,
     taproot_keypath_sign,
+    taproot_keypath_verify,
     taproot_scriptpath_sign,
     taproot_scriptpath_witness,
     taproot_sighash,
@@ -145,18 +146,31 @@ def test_bip341_official_taproot_output_key_vector():
     )
 
 
-def test_taproot_keypath_signature_and_optional_sighash_byte():
+def test_taproot_keypath_signatures_verify_against_the_tweaked_output_key():
+    merkle_root = bytes.fromhex("11" * 32)
     signature = taproot_keypath_sign(
         MESSAGE,
         PRIVATE_KEY,
+        merkle_root=merkle_root,
         aux_rand=bytes(32),
         sighash_type=SIGHASH_ALL,
     )
-    output_key = taproot_tweak_pubkey(xonly_public_key(PRIVATE_KEY)).output_key
+    output_key = taproot_tweak_pubkey(xonly_public_key(PRIVATE_KEY), merkle_root).output_key
     assert len(signature) == 65
     assert signature[-1] == SIGHASH_ALL
     assert schnorr_verify(MESSAGE, signature[:64], output_key)
-    assert encode_taproot_signature(signature[:64], SIGHASH_DEFAULT) == signature[:64]
+    assert taproot_keypath_verify(
+        MESSAGE,
+        signature,
+        xonly_public_key(PRIVATE_KEY),
+        merkle_root=merkle_root,
+    )
+    assert not taproot_keypath_verify(
+        MESSAGE,
+        signature[:-1],
+        xonly_public_key(PRIVATE_KEY),
+        merkle_root=merkle_root,
+    )
 
 
 def test_bip341_sighash_commits_to_prevouts_and_transaction_context():
