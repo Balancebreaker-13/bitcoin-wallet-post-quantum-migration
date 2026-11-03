@@ -12,7 +12,6 @@ liboqs-python>=0.16.0
 
 # Key Derivation
 mnemonic>=0.20                 # BIP39 mnemonic generation
-bip32-utils>=0.3.0             # BIP32/44 hierarchical key derivation
 
 # Utilities
 python-bitcoinlib>=0.12.0      # Bitcoin utilities
