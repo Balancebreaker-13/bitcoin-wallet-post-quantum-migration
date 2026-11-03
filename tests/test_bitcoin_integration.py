@@ -78,7 +78,12 @@ def test_segwit_txid_excludes_witness_but_wtxid_includes_it():
     assert txid != wtxid
     assert txid == BitcoinTransactionBuilder.transaction_id(transaction)
     assert wtxid == BitcoinTransactionBuilder.witness_transaction_id(transaction)
-    assert BitcoinTransactionBuilder.transaction_id(transaction) != BitcoinTransactionBuilder.transaction_id(transaction + b"\x00")
+
+    # Trailing bytes are malformed transaction data, not a valid alternative
+    # serialization. The parser must reject them rather than silently hashing
+    # the original payload or treating the extra byte as part of locktime.
+    with pytest.raises(ValueError, match="locktime"):
+        BitcoinTransactionBuilder.transaction_id(transaction + b"\x00")
 
 
 def test_script_helpers_validate_hash_lengths():
