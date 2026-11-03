@@ -332,14 +332,18 @@ def taproot_keypath_verify(
         message = _message(message)
         if len(signature) not in (64, 65):
             return False
-        sig = _bytes(signature[:64], "signature", length=64)
         if len(signature) == 65:
+            sig = _bytes(signature[:64], "signature", length=64)
             signed_sighash = signature[-1]
             if sighash_type is not None and signed_sighash != sighash_type:
                 return False
             _validate_sighash_type(signed_sighash)
-        elif sighash_type is not None:
-            _validate_sighash_type(sighash_type)
+        else:
+            sig = _bytes(signature, "signature", length=64)
+            if sighash_type is not None:
+                _validate_sighash_type(sighash_type)
+                if sighash_type != SIGHASH_DEFAULT:
+                    return False
         output_key = taproot_tweak_pubkey(
             _bytes(internal_key, "internal_key", length=32),
             merkle_root,
@@ -535,3 +539,4 @@ __all__ = [
     "verify_taproot_control_block",
     "xonly_public_key",
 ]
+
