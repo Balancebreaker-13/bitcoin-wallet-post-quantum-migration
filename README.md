@@ -1,13 +1,16 @@
 # WISDOM NETWORK WALLET
 
-A research and prototyping project focused on secure digital wallet migration strategies in a post-quantum cryptography environment. The repository explores hybrid cryptographic patterns that combine legacy ECC protections with quantum-resistant signing and key management workflows.
+A research and prototyping project focused on secure digital-wallet migration strategies for a post-quantum cryptography environment.
 
-Status: research prototype and engineering validation project. It is not production-ready, not suitable for handling real funds, and does not provide a consensus-valid wallet spending system.
+This repository explores hybrid cryptographic patterns combining secp256k1 ECDSA with ML-DSA / ML-KEM-style PQC interfaces, transaction serialization helpers, encrypted key storage, and validation-oriented wallet logic.
+
+Status: research prototype and engineering-validation project.
+
+This project is not production-ready, is not suitable for handling real funds, and does not provide a consensus-valid Bitcoin spending system. It is meant for research, validation, and implementation experimentation until the required release and security gates are passed.
 
 ## What is implemented
 
-- secp256k1 ECDSA and BIP340 Schnorr-style wallet primitives
-- BIP341-style Taproot support primitives, including key tweaks and sighash helpers
+- secp256k1 ECDSA and BIP340/BIP341-style Taproot primitives
 - hybrid wallet envelope with ECC + PQC signing in a versioned format
 - encrypted key storage with validation and recovery-oriented flows
 - Bitcoin Core RPC integration patterns with chain and mempool checks before broadcast
@@ -17,18 +20,18 @@ Status: research prototype and engineering validation project. It is not product
 
 ## Current project maturity
 
-The project has completed a substantial implementation and validation cycle, but it remains in a research/engineering stage rather than a release-ready state.
+The project contains substantial implementation work and validation artifacts, but it remains in a research / engineering-validation stage rather than a release-ready state.
 
-The repository itself documents the present reality:
+The repository documents the current reality:
 
-- Latest local validation: 55 tests passed, 1 skipped
-- Latest coverage: approximately 80% statement coverage on Python 3.13.11
-- Benchmark harness exists and is repeatable in a configured environment
-- Live Bitcoin Core regtest validation has not been completed
-- A representative deployment-hardware benchmark run has not been completed
-- Independent cryptographic, consensus, and side-channel review remain open
+- local validation exists and the historical run reported 55 passed / 1 skipped
+- measured statement coverage was approximately 80% on Python 3.13.11
+- a benchmark harness exists and is repeatable in a configured environment
+- live Bitcoin Core regtest validation has not been completed
+- representative deployment-hardware benchmark validation has not been completed
+- independent cryptographic, consensus, and side-channel review remain open
 
-This project is therefore suitable for research, validation, and integration prototyping, but not for beta or production deployment.
+This project is therefore suitable for research, validation, and integration prototyping, but it is not suitable for beta or production deployment.
 
 ## Repository structure
 
@@ -46,13 +49,13 @@ This project is therefore suitable for research, validation, and integration pro
 
 ### PQC adapters
 
-The project loads the native `oqs` backend and wraps the relevant Post-Quantum algorithms for the wallet. The implementation explicitly rejects missing or unusable native PQC backends instead of silently degrading.
+The project loads the native `oqs` backend and wraps the relevant post-quantum algorithms for the wallet. The implementation explicitly fails closed when the native backend is missing instead of silently falling back to insecure primitives.
 
 ### Hybrid wallet model
 
-The hybrid wallet signs message or transaction data with both the legacy ECC key and the PQC signature key, then encodes them in a versioned bundle. Verification requires both signature components to be present and valid.
+The hybrid wallet signs transaction or message data with both the legacy ECC key and the PQC signing key, then encodes them as a versioned bundle. Verification requires both components to validate.
 
-This is useful as a transitional architecture and migration pattern, but it is not a consensus-valid Bitcoin script or a production wallet signing policy.
+This design is useful for transition, migration, and validation work, but it is not a consensus-valid Bitcoin script or a production wallet signing policy.
 
 ### Bitcoin integration
 
@@ -63,17 +66,18 @@ The repository includes:
 - RPC integration patterns for Bitcoin Core
 - secure-cookie authentication and mempool/chain validation checks before broadcast
 
-These are engineering validation components, not a full consensus-ready Bitcoin implementation.
+These are engineering-validation components, not a full consensus-ready Bitcoin implementation.
 
 ## Important caveats
 
-The project is intentionally careful about the boundary between prototype work and production readiness. Key caveats from the repo include:
+The project is intentionally careful about the boundary between prototype work and production readiness. Key caveats include:
 
 - no live regtest validation against a configured Bitcoin Core node
-- no authoritative BIP341 sighash vector cross-check yet
-- no full Tapscript/consensus-valid script execution layer
-- no independent security review for side-channel, cryptographic, or consensus concerns
+- no authoritative BIP341 sighash-vector cross-check yet
+- no full Tapscript or consensus-valid execution layer
+- no independent cryptographic, consensus, or side-channel review
 - no deployment-grade benchmarking or hardware validation
+- BIP32 / HD wallet derivation is not implemented unless a separate design decision is approved and validated
 
 ## Development
 
@@ -89,7 +93,7 @@ Optional coverage run:
 python -m pytest --cov=src --cov-report=term-missing -q tests
 ```
 
-Run the benchmarking harness after confirming the native liboqs backend is available:
+Run the benchmarking harness only after confirming the native liboqs backend is available:
 
 ```bash
 python benchmarks/benchmark_wallet.py
@@ -99,11 +103,11 @@ python benchmarks/benchmark_wallet.py
 
 The current phase is validation hardening and transition-readiness work. The primary goals are:
 
-1. run and record representative validation results in a configured environment
+1. confirm that the project installs and tests in a reproducible environment
 2. complete live Bitcoin Core regtest validation where supported
 3. verify Taproot and sighash logic against authoritative vectors
 4. strengthen documentation around security and deployment boundaries
-5. prepare the project for a disciplined next release gate instead of claiming production readiness
+5. prepare the project for disciplined next-stage release-gate work rather than claiming production readiness
 
 ## Related documentation
 
@@ -122,4 +126,4 @@ This project is licensed under the Apache License 2.0. See `LICENSE` for details
 
 ## Status summary
 
-This repository is best described as a cryptographic migration prototype and validation project. It is valuable for research, implementation experiments, and careful engineering evaluation, but it is not a production wallet or a deployment-ready digital asset platform.
+This repository is best described as a cryptographic migration prototype and validation project. It is valuable for research, implementation experiments, and careful engineering evaluation, but it is not a mature wallet for real funds or a production-ready Bitcoin deployment.
