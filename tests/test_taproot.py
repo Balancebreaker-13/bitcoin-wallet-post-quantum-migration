@@ -85,15 +85,18 @@ def test_taproot_keypath_signatures_verify_against_tweaked_output_key():
     assert signature[-1] == SIGHASH_ALL
     assert schnorr_verify(MESSAGE, signature[:64], output_key)
     assert taproot_keypath_verify(MESSAGE, signature, internal_key, merkle_root=merkle_root)
-    # A 64-byte witness signature is a valid SIGHASH_DEFAULT signature. Removing
-    # the explicit SIGHASH_ALL byte changes its declared mode; the Schnorr body
-    # itself remains valid for this fixed test message, so generic verification
-    # must accept it as DEFAULT. An explicit expected mode can detect the mismatch.
     assert taproot_keypath_verify(
         MESSAGE,
         signature[:-1],
         internal_key,
         merkle_root=merkle_root,
+    )
+    assert not taproot_keypath_verify(
+        MESSAGE,
+        signature[:-1],
+        internal_key,
+        merkle_root=merkle_root,
+        sighash_type=SIGHASH_ALL,
     )
 
 
