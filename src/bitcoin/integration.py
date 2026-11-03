@@ -161,19 +161,18 @@ class BitcoinTransactionBuilder:
 
     @staticmethod
     def _strip_witness_data(transaction: bytes) -> bytes:
-        """Return the canonical pre-SegWit form used for computing a txid."""
+        """Return canonical non-witness serialization for a SegWit transaction ID."""
         transaction = _bytes(transaction, "transaction", allow_empty=False)
-        if len(transaction) < 10:
-            return transaction
-        if transaction[4:6] != b"\x00\x01":
+        if len(transaction) < 10 or transaction[4:6] != b"\x00\x01":
             return transaction
 
+        # Parse the base transaction, remembering where its non-witness fields end.
         pos = 6
         vin_count, pos = _read_compact_size(transaction, pos)
         for _ in range(vin_count):
-            if pos + 32 + 4 > len(transaction):
+            if pos + 36 > len(transaction):
                 raise ValueError("transaction is truncated before the inputs")
-            pos += 32 + 4
+            pos += 36
             script_len, pos = _read_compact_size(transaction, pos)
             if pos + script_len + 4 > len(transaction):
                 raise ValueError("transaction is truncated before the input script")
@@ -188,27 +187,23 @@ class BitcoinTransactionBuilder:
             if pos + script_len > len(transaction):
                 raise ValueError("transaction is truncated before the output script")
             pos += script_len
+        non_witness_end = pos
 
-        # SegWit transactions serialize witness data after the outputs but before the
-        # locktime field. Skip each input's witness stack and then reconstruct the
-        # canonical pre-witness serialization used to compute a txid.
+        # Validate/skip witness serialization for each input. The txid serialization
+        # uses the base fields above and must not include any witness bytes.
         for _ in range(vin_count):
             if pos >= len(transaction) - 4:
-                raise ValueError("transaction is truncated before the witness data")
-            stack_items, pos = _read_compact_size(transaction, pos)
-            for _ in range(stack_items):
-                item_len, pos = _read_compact_size(transaction, pos)
-                if pos + item_len > len(transaction) - 4:
-                    raise ValueError("transaction is truncated before the witness payload")
-                pos += item_len
+                raise ValueError("transaction is truncated before witness data")
+            item_count, pos = _read_compact_size(transaction, pos)
+            for _ in range(item_count):
+                item_length, pos = _read_compact_size(transaction, pos)
+                if pos + item_length > len(transaction) - 4:
+                    raise ValueError("transaction is truncated before witness payload")
+                pos += item_length
 
         if pos + 4 != len(transaction):
-            raise ValueError("transaction is truncated before the locktime field")
-
-        # Keep the version, then re-serialize the non-witness fields without the
-        # marker/flag or witness stack. The locktime is retained as the final field.
-        stripped = transaction[:4] + transaction[6:pos] + transaction[-4:]
-        return stripped
+            raise ValueError("transaction has malformed witness data or locktime")
+        return transaction[:4] + transaction[6:non_witness_end] + transaction[-4:]
 
     def create_p2pkh_script(self, pubkey_hash: bytes) -> bytes:
         pubkey_hash = self._validate_script_hash(pubkey_hash, 20, "pubkey_hash")
@@ -354,4 +349,3 @@ class BitcoinTransactionBuilder:
 
     def __repr__(self) -> str:
         return f"BitcoinTransactionBuilder(version={self.version})"
-
