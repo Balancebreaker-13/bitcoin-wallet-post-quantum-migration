@@ -4,24 +4,33 @@
 
 This roadmap prioritizes reliable, evidence-backed validation of the current research prototype before adding wallet features or making release claims.
 
-The project explores Bitcoin wallet cryptography and post-quantum migration patterns. The current hybrid ECC + ML-DSA signature envelope is **not a Bitcoin consensus authorization mechanism**. The project is not suitable for real funds, beta deployment, or production use. Keep this warning in the README, release notes, and user-facing documentation until the required gates are independently completed.
+The project explores Bitcoin wallet cryptography and post-quantum migration patterns. The hybrid ECC + ML-DSA signature envelope is **not a Bitcoin consensus authorization mechanism**. The project is not suitable for real funds, beta deployment, or production use.
 
-Roadmap checkboxes are evidence-driven: mark an item complete only when its implementation or validation artifact is present and reviewable in the repository. Historical summaries are not substitutes for current CI or release-gate evidence.
+Roadmap checkboxes are evidence-driven: mark an item complete only when its implementation or validation artifact is present and reviewable in the repository. Historical summaries are not substitutes for current results.
+
+## Current validation snapshot — 2026-11-03
+
+- Latest checked Python CI run: [run 17](https://github.com/Balancebreaker-13/bitcoin-wallet-post-quantum-migration/actions/runs/41666739272), commit `17a74762a27837787c5d2260d712b961f3456355`.
+- Result: **failed** — 1 failed, 58 passed, 1 skipped. The failed test is `tests/test_bitcoin_integration.py::test_segwit_txid_excludes_witness_but_wtxid_includes_it`; the transaction parser raises `ValueError: transaction is truncated before the locktime field`.
+- The Taproot key-path test passed in this run after clarifying 64-byte `SIGHASH_DEFAULT` versus 65-byte explicit-sighash behavior.
+- The SegWit txid correction is not validated yet. Do not mark the CI or transaction-serialization gates complete until the failing case is fixed and a new run passes.
+- Live Bitcoin Core regtest, authoritative BIP341 sighash cross-checking, deployment-hardware benchmarks, and independent cryptographic/consensus/side-channel reviews remain outstanding.
 
 ---
 
-## Milestone 0 — Establish a trustworthy CI baseline (next)
+## Milestone 0 — Establish a trustworthy CI baseline (active)
 
 **Goal:** make the normal development workflow installable, reproducible, and able to report actual test results.
 
 - [ ] Verify every dependency in `requirements.txt` exists for the supported Python version and is used by the current code; remove unused or unavailable entries.
 - [ ] Keep CI aligned with this Python project: install dependencies and run `python -m pytest -q tests` (not Django commands).
-- [ ] Confirm the latest GitHub Actions run completes dependency installation and reaches pytest.
-- [ ] Record the actual test result, skips, Python version, and native `liboqs` availability; do not describe an in-progress or install-failed run as passing.
-- [ ] Decide whether native `liboqs` is mandatory in CI. If it is, provision and verify the backend explicitly; if it is optional, separate backend-independent tests from native-backend tests and make skips visible.
-- [ ] Validate that the release workflow can build a distributable package. Add packaging metadata only if package distribution is an intended deliverable; otherwise disable or remove the template publishing workflow.
+- [ ] Fix `test_segwit_txid_excludes_witness_but_wtxid_includes_it` and confirm txid/wtxid behavior against the test’s intended valid serialization.
+- [ ] Confirm a current GitHub Actions run completes dependency installation and reaches pytest with a passing result.
+- [ ] Record the actual test result, skips, Python version, and native `liboqs` availability; do not describe an in-progress, failed, or install-failed run as passing.
+- [ ] Decide whether native `liboqs` is mandatory in CI. If mandatory, provision and verify the backend explicitly; if optional, separate backend-independent tests from native-backend tests and report the distinction.
+- [ ] Validate that the release workflow can build a distributable package. Add packaging metadata only if package distribution is intended; otherwise disable or remove template workflows that imply it.
 
-**Exit criteria:** CI installs dependencies and runs the suite reproducibly, with a recorded result and explicit handling of native-backend tests.
+**Exit criteria:** CI installs dependencies and runs the suite reproducibly, with a recorded passing result and explicit handling of native-backend tests.
 
 ---
 
@@ -30,10 +39,10 @@ Roadmap checkboxes are evidence-driven: mark an item complete only when its impl
 **Goal:** distinguish implemented behavior from design proposals and decide what this project is intended to deliver.
 
 - [ ] Keep the primary scope as a research/engineering-validation prototype unless the owner explicitly chooses a consensus-compatible wallet implementation.
-- [ ] Mark architecture diagrams and user guides that describe unimplemented features (for example, account management, UTXO selection, address generation, Tapscript execution, and confirmation tracking) as proposed or remove them.
+- [ ] Mark architecture diagrams and user guides that describe unimplemented features (for example, account management, UTXO selection, address generation, Tapscript execution, and confirmation tracking) as proposed or not implemented.
 - [ ] Document that local hybrid signing verifies an application-level envelope; it does not make the transaction spendable under Bitcoin consensus.
-- [ ] Choose whether deterministic HD derivation is in scope. If it is, implement standard BIP32 for secp256k1 keys only after the derivation design and test plan are approved. BIP44 path conventions must not be presented as implemented until they are.
-- [ ] Do not derive ML-DSA/ML-KEM keys by simply reusing BIP32. Before implementing PQC recovery, specify a versioned derivation protocol, domain separation, input/seed handling, algorithm identifiers, migration behavior, and test vectors. If no such protocol is approved, explicitly keep deterministic PQC derivation out of scope.
+- [ ] Choose whether deterministic HD derivation is in scope. If it is, implement standard BIP32 for secp256k1 keys only after the derivation design and test plan are approved. BIP44 path conventions must not be presented as implemented without evidence.
+- [ ] Do not derive ML-DSA/ML-KEM keys by simply reusing BIP32. Before implementing PQC recovery, specify a versioned derivation protocol, domain separation, seed handling, algorithm identification, and backup/recovery properties.
 - [ ] Reconcile `requirements.txt`, installation guides, architecture docs, phase summaries, and README statements with the code that actually exists.
 
 **Exit criteria:** project scope and implementation boundaries are consistent across code and documentation; BIP32/PQC derivation decisions are explicit.
@@ -64,7 +73,7 @@ Roadmap checkboxes are evidence-driven: mark an item complete only when its impl
 - [ ] Verify the authenticated RPC client's chain check, `testmempoolaccept` handling, and broadcast behavior against a live regtest node; mocked tests alone do not satisfy this gate.
 - [ ] Compare transaction serialization, `txid`, and `wtxid` results with Bitcoin Core for supported transaction forms.
 - [ ] Exercise a canonical valid Taproot key-path spend and invalid-spend rejection against Bitcoin Core where the implementation supports it.
-- [ ] Do not submit the hybrid ML-DSA envelope as a Bitcoin script or claim a hybrid transaction is consensus-valid. Script-path spend validation is out of scope until a real Tapscript/consensus-compatible design exists.
+- [ ] Do not submit the hybrid ML-DSA envelope as a Bitcoin script or claim a hybrid transaction is consensus-valid. Script-path spend validation is out of scope until a real Tapscript/consensus-compatible layer is selected and implemented.
 - [ ] Add confirmation/status tracking only if it is part of the selected project scope; otherwise document it as not implemented.
 
 **Exit criteria:** live regtest results validate the supported standard Bitcoin/RPC integration boundaries, and unsupported hybrid-consensus behavior remains clearly excluded.
@@ -111,16 +120,16 @@ This milestone may begin only after Milestones 0–5 are complete and the projec
 - [ ] Release artifacts build and publish through a validated, least-privilege workflow.
 - [ ] Security and project-status documents explicitly define what the beta does and does not support.
 
-Even if this milestone is completed, do not claim that ML-DSA signatures authorize Bitcoin mainnet spends unless a consensus-compatible protocol has been specified, adopted, implemented, and independently validated.
+Even if this milestone is completed, do not claim that ML-DSA signatures authorize Bitcoin mainnet spends unless a consensus-compatible protocol has been specified, adopted, implemented, and independently reviewed.
 
 ---
 
 ## Previously reported work (historical; re-verify before relying on it)
 
 - Research and design phases were marked complete in prior roadmap revisions.
-- The repository contains ML-DSA/ML-KEM adapters in `src/pqc/core.py`, hybrid signing in `src/hybrid/hybrid_wallet.py`, Bitcoin transaction/RPC/Taproot helpers under `src/bitcoin/`, encrypted key storage and BIP39 mnemonic utilities under `src/key_management/`, and pytest coverage under `tests/`.
+- The repository contains ML-DSA/ML-KEM adapters in `src/pqc/core.py`, hybrid signing in `src/hybrid/hybrid_wallet.py`, Bitcoin transaction/RPC/Taproot helpers under `src/bitcoin/`, encrypted key storage, tests, and local benchmarks.
 - `PHASE4_COMPLETION_SUMMARY.md` reports a historical local run of 55 passed and 1 skipped with approximately 80% statement coverage. This is not a substitute for a current passing CI run.
-- Live Bitcoin Core regtest validation, authoritative BIP341 sighash cross-checking, representative deployment-hardware benchmarks, and independent cryptographic/consensus/side-channel review have been documented as outstanding.
+- Live Bitcoin Core regtest validation, authoritative BIP341 sighash cross-checking, representative deployment-hardware benchmarks, and independent cryptographic/consensus/side-channel review have not been completed.
 
 ---
 
