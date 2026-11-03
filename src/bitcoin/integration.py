@@ -58,14 +58,23 @@ def _read_compact_size(data: bytes, start: int) -> tuple[int, int]:
     if first == 0xFD:
         if start + 3 > len(data):
             raise ValueError("CompactSize value is truncated")
-        return int.from_bytes(data[start + 1:start + 3], "little"), start + 3
+        value = int.from_bytes(data[start + 1:start + 3], "little")
+        if value < 0xFD:
+            raise ValueError("CompactSize value is not canonically encoded")
+        return value, start + 3
     if first == 0xFE:
         if start + 5 > len(data):
             raise ValueError("CompactSize value is truncated")
-        return int.from_bytes(data[start + 1:start + 5], "little"), start + 5
+        value = int.from_bytes(data[start + 1:start + 5], "little")
+        if value <= 0xFFFF:
+            raise ValueError("CompactSize value is not canonically encoded")
+        return value, start + 5
     if start + 9 > len(data):
         raise ValueError("CompactSize value is truncated")
-    return int.from_bytes(data[start + 1:start + 9], "little"), start + 9
+    value = int.from_bytes(data[start + 1:start + 9], "little")
+    if value <= MAX_UINT32:
+        raise ValueError("CompactSize value is not canonically encoded")
+    return value, start + 9
 
 
 @dataclass(frozen=True)
@@ -161,11 +170,9 @@ class BitcoinTransactionBuilder:
 
     @staticmethod
     def _strip_witness_data(transaction: bytes) -> bytes:
-        """Return the canonical pre-SegWit serialization used for txid hashing."""
+        """Return canonical non-witness serialization for SegWit txid hashing."""
         transaction = _bytes(transaction, "transaction", allow_empty=False)
-        if len(transaction) < 10:
-            return transaction
-        if transaction[4:6] != b"\x00\x01":
+        if len(transaction) < 10 or transaction[4:6] != b"\x00\x01":
             return transaction
 
         pos = 6
@@ -189,7 +196,9 @@ class BitcoinTransactionBuilder:
                 raise ValueError("transaction is truncated before the output script")
             pos += script_len
 
-        witness_start = pos
+        # Remember the exact end of non-witness data before advancing over the
+        # per-input witness stacks. The txid serialization excludes these bytes.
+        non_witness_end = pos
         for _ in range(vin_count):
             if pos >= len(transaction) - 4:
                 raise ValueError("transaction is truncated before the witness data")
@@ -203,9 +212,8 @@ class BitcoinTransactionBuilder:
         if pos + 4 != len(transaction):
             raise ValueError("transaction is truncated before the locktime field")
 
-        # txid is computed over version + inputs + outputs + locktime, without the
-        # witness marker/flag and without the per-input witness stacks.
-        return transaction[:4] + transaction[6:witness_start] + transaction[-4:]
+        # Keep version, input/output bytes and locktime; omit marker, flag, witness.
+        return transaction[:4] + transaction[6:non_witness_end] + transaction[-4:]
 
     def create_p2pkh_script(self, pubkey_hash: bytes) -> bytes:
         pubkey_hash = self._validate_script_hash(pubkey_hash, 20, "pubkey_hash")
@@ -351,4 +359,3 @@ class BitcoinTransactionBuilder:
 
     def __repr__(self) -> str:
         return f"BitcoinTransactionBuilder(version={self.version})"
-
